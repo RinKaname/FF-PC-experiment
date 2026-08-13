@@ -87,6 +87,9 @@ class CUDAConvFFLayer:
         self.W = cp.random.uniform(-limit_w, limit_w, (out_channels, in_channels, kernel_size, kernel_size), dtype=cp.float32)
 
         # Decoder weights (Transposed Conv / Generative)
+        # PyTorch ConvTranspose2d expects: (in_channels, out_channels, kernel_size, kernel_size)
+        # Here "in_channels" means the channels of the LATENT z going INTO the decoder (which is self.out_c).
+        # "out_channels" means the channels coming OUT of the decoder (which is self.in_c).
         self.G = cp.random.uniform(-limit_w, limit_w, (out_channels, in_channels, kernel_size, kernel_size), dtype=cp.float32)
 
         # Note: In a real implementation, you'd use cp.cudnn or similar for the actual forward pass
