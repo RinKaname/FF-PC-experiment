@@ -3,6 +3,9 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import torchvision.utils as vutils
+from PIL import Image
+import torchvision.transforms as transforms
+
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
 
@@ -79,6 +82,30 @@ class AnimeForwardForwardGenerator:
         x_pred  = self.enc_layer1.forward_decoder(z1_pred)
         return x_pred
 
+
+    def reconstruct_image(self, image_path, output_filename="reconstructed_face.png"):
+        """ Load a real image, encode it, and decode it back to compare """
+        transform = transforms.Compose([
+            transforms.Resize((64, 64)),
+            transforms.ToTensor()
+        ])
+
+        try:
+            img = Image.open(image_path).convert('RGB')
+        except Exception as e:
+            print(f"Error loading image {image_path}: {e}")
+            return
+
+        img_tensor = transform(img).unsqueeze(0) # Add batch dimension
+
+        print(f"Encoding and decoding {image_path}...")
+        reconstructed = self.decode(self.encode(img_tensor))
+
+        # Save side-by-side
+        combined = torch.cat([img_tensor.cpu(), reconstructed.cpu()], dim=0)
+        vutils.save_image(combined, output_filename, nrow=2, normalize=False)
+        print(f"Successfully saved original and reconstructed image to: {output_filename}")
+
     def generate_from_noise(self, batch_size=16, spatial_size=64):
         """ Generate hallucinated faces by feeding random noise to the top-down decoder """
         # Latent space is 128 channels at the spatial size (since stride=1 padding=1 keeps size same)
@@ -109,15 +136,32 @@ if __name__ == "__main__":
         print(f"Weights file not found at {model_path}. Please check your HF repository or local path.")
         exit(1)
 
-    print("\nGenerating faces from random latent noise...")
 
-    # Generate a batch of 16 faces
-    generated_images = model.generate_from_noise(batch_size=16, spatial_size=64)
+    import sys
+    import urllib.request
 
-    # Ensure they are clamped and ready for saving
-    generated_images = torch.clamp(generated_images, 0.0, 1.0)
+    if len(sys.argv) > 1:
+        image_path = sys.argv[1]
+        print(f"\nReconstructing provided image: {image_path}")
+        model.reconstruct_image(image_path)
+    else:
+        print("\nNo image provided. Downloading a sample anime face for reconstruction...")
+        sample_url = "https://upload.wikimedia.org/wikipedia/en/8/86/Avatar_Aang.png"
+        sample_path = "sample_anime.png"
+        try:
+            req = urllib.request.Request(sample_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response, open(sample_path, 'wb') as out_file:
+                out_file.write(response.read())
+            print(f"\nReconstructing sample image: {sample_path}")
+            model.reconstruct_image(sample_path)
+        except Exception as e:
+            print(f"Failed to download sample image: {e}")
 
-    # Save the output
-    output_filename = "generated_faces_inference.png"
-    vutils.save_image(generated_images, output_filename, nrow=4, normalize=False)
-    print(f"Successfully generated and saved faces to: {output_filename}")
+        print("\nGenerating faces from random latent noise (Note: As an AE, this will likely look like noise)...")
+        # Generate a batch of 16 faces
+        generated_images = model.generate_from_noise(batch_size=16, spatial_size=64)
+        generated_images = torch.clamp(generated_images, 0.0, 1.0)
+        output_filename = "generated_faces_inference.png"
+        vutils.save_image(generated_images, output_filename, nrow=4, normalize=False)
+        print(f"Successfully generated and saved faces to: {output_filename}")
+        print("\nTip: To reconstruct a real image, run: python inference.py <path_to_image.png>")
