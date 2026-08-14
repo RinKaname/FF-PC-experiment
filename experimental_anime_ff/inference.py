@@ -43,7 +43,7 @@ class CUDAConvFFLayer:
         z = z.to(self.device)
         with torch.no_grad():
             x_pred = F.conv_transpose2d(z, self.G, stride=1, padding=1)
-            # Removed intermediate sigmoid bound
+            x_pred = torch.sigmoid(x_pred)
         return x_pred
 
 
